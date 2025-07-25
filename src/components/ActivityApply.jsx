@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db, ref, get, auth, set, push, child } from '../firebase';
 import { Link } from 'react-router-dom';
-import { upload } from '@vercel/blob'; // 引入 Vercel Blob 的上傳功能
+// 【核心修正】從 @vercel/blob/client 引入 upload
+import { upload } from '@vercel/blob/client';
 
 // 表單初始狀態的函式，方便重置表單
 const getInitialFormData = () => ({
@@ -19,7 +20,7 @@ const getInitialFormData = () => ({
   startTime: '',
   endTime: '',
   location: '',
-  speakers: [{ name: '', unit: '', title: '' }], // 至少一位講者
+  speakers: [{ name: '', unit: '', title: '' }],
   needsTicket: false,
   hasOnlineRegistration: false,
   isCourseCredit: false,
@@ -42,9 +43,9 @@ const ActivityApply = () => {
     try {
       const start = new Date(`1970-01-01T${formData.startTime}:00`);
       const end = new Date(`1970-01-01T${formData.endTime}:00`);
-      const diff = (end - start) / (1000 * 60); // 轉換為分鐘
+      const diff = (end - start) / (1000 * 60);
       return diff > 0 ? diff : 0;
-    } catch (e) {
+    } catch { // 已修正為省略參數的寫法
       return 0;
     }
   }, [formData.startTime, formData.endTime]);
@@ -57,14 +58,10 @@ const ActivityApply = () => {
       try {
         const settingsRef = ref(db, 'settings');
         const userRef = ref(db, `users/${user.uid}`);
-
-        // 同時讀取系統設定與使用者資料
         const [settingsSnapshot, userSnapshot] = await Promise.all([
           get(settingsRef),
           get(userRef),
         ]);
-
-        // 處理系統設定
         if (settingsSnapshot.exists()) {
           const settings = settingsSnapshot.val();
           setAnnouncement(settings.announcement || '暫無公告');
@@ -76,8 +73,6 @@ const ActivityApply = () => {
           closeDate.setDate(closeDate.getDate() + 1);
           setIsApplicationOpen(today >= openDate && today < closeDate);
         }
-
-        // 預填使用者資料
         if (userSnapshot.exists()) {
           const userData = userSnapshot.val();
           setFormData(prev => ({
@@ -140,12 +135,12 @@ const ActivityApply = () => {
     const file = e.target.files[0];
     if (file && file.type !== 'application/pdf') {
       alert("檔案格式錯誤，僅接受 PDF 檔案。");
-      e.target.value = null; // 清空選擇
+      e.target.value = null;
       return;
     }
     if (file && file.size > 5 * 1024 * 1024) { // 5MB
       alert("檔案過大，請上傳 5MB 以內的檔案。");
-      e.target.value = null; // 清空選擇
+      e.target.value = null;
       return;
     }
     setProposalFile(file);
@@ -165,34 +160,28 @@ const ActivityApply = () => {
 
     setIsSubmitting(true);
     try {
-      // 1. 上傳檔案至 Vercel Blob
       const newBlob = await upload(proposalFile.name, proposalFile, {
         access: 'public',
-        handleUploadUrl: '/api/upload', // Vercel 會自動處理這個 API 路由
+        handleUploadUrl: '/api/upload',
       });
       
-      // 2. 準備存入 Firebase 的資料
       const newApplicationRef = push(child(ref(db), 'applications'));
       const applicationData = {
         ...formData,
-        applicationId: newApplicationRef.key, // 系統生成的唯一 ID
-        applicantUid: user.uid, // 申請人 UID
-        proposalUrl: newBlob.url, // Vercel Blob 回傳的檔案網址
+        applicationId: newApplicationRef.key,
+        applicantUid: user.uid,
+        proposalUrl: newBlob.url,
         status: '簽核中',
         submittedAt: new Date().toISOString(),
-        duration, // 儲存計算出的時長
+        duration,
       };
 
-      // 3. 寫入 Firebase
       await set(newApplicationRef, applicationData);
       
       alert("申請成功送出！\n系統將會清空表單。\n請至「活動管理」頁面上傳簽核完成的 PDF 檔案。");
-      // 4. 重置表單
       setFormData(getInitialFormData());
       setProposalFile(null);
-      // 清空 file input 的值
       document.getElementById('proposalFile').value = null;
-      // TODO: 實作跳出列印視窗功能
 
     } catch (error) {
       console.error("提交申請失敗:", error);
@@ -206,7 +195,6 @@ const ActivityApply = () => {
     return <div>讀取設定中...</div>;
   }
 
-  // 主要 JSX 結構
   return (
     <div>
       <Link to="/">&lt; 返回主頁</Link>
@@ -220,7 +208,6 @@ const ActivityApply = () => {
       {isApplicationOpen ? (
         <form onSubmit={handleSubmit}>
           <h3>活動申請表單</h3>
-          {/* 每一區塊的欄位... */}
           <fieldset>
             <legend>基本資料</legend>
             <p>申請學期/梯次: {formData.semester}</p>
@@ -279,7 +266,7 @@ const ActivityApply = () => {
             <div><label>備註: <textarea name="remarks" value={formData.remarks} onChange={handleChange} rows="4" cols="50" /></label></div>
           </fieldset>
 
-          <button type="submit" disabled={isSubmitting || duration < 90}>
+          <button type="submit" disabled={isSubmitting || (duration > 0 && duration < 90)}>
             {isSubmitting ? '提交中...' : '生成簽核單並送出申請'}
           </button>
         </form>
