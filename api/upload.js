@@ -1,30 +1,35 @@
 // api/upload.js
 import { handleUpload } from '@vercel/blob/server';
 
-export default async function handler(request, response) {
-  const body = request.body;
+// 【核心修正】從導出一個預設的 handler，改為導出一個名為 POST 的函式
+export async function POST(request) {
+  // 【核心修正】從 request.body 改為 await request.json() 來獲取請求內容
+  const body = await request.json();
 
   try {
     const jsonResponse = await handleUpload({
       body,
       request,
-      // 【核心修正】將 pathname 改為 _pathname，告訴 Linter 我們故意不用它
-      onBeforeGenerateToken: async (_pathname /*, clientPayload */) => {
+      onBeforeGenerateToken: async (_pathname) => {
         return {
           allowedContentTypes: ['application/pdf'],
-          tokenPayload: JSON.stringify({
-            // 此處可以為空，或放入未來可能用到的資訊
-          }),
+          tokenPayload: JSON.stringify({}),
         };
       },
-      // 【核心修正】只解構我們需要用到的 blob 參數
       onUploadCompleted: async ({ blob }) => {
         console.log('Vercel Blob upload completed', blob.url);
       },
     });
 
-    return response.status(200).json(jsonResponse);
+    // 【核心修正】從 response.status().json() 改為回傳一個標準的 Response 物件
+    return new Response(JSON.stringify(jsonResponse), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
   } catch (error) {
-    return response.status(400).json({ error: error.message });
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 400, // Bad Request
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 }
