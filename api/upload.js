@@ -1,6 +1,12 @@
 // api/upload.js
 import { handleUpload, VercelBlobError } from '@vercel/blob/server';
 
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
 export default async function handler(request, response) {
   try {
     // 【核心修正】將 request 和 response 交給 handleUpload，並等待它完成即可。
