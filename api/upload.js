@@ -1,5 +1,5 @@
 // api/upload.js
-import { handleUpload, VercelBlobError } from '@vercel/blob/server';
+import { handleUpload, VercelBlobError } from '@vercel/blob';
 
 export const config = {
   api: {
