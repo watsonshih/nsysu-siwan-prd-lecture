@@ -1,10 +1,13 @@
 // api/upload.js
 import { handleUpload } from '@vercel/blob/server';
 
-// 【核心修正】從導出一個預設的 handler，改為導出一個名為 POST 的函式
-export async function POST(request) {
-  // 【核心修正】從 request.body 改為 await request.json() 來獲取請求內容
-  const body = await request.json();
+export default async function handler(request, response) {
+  // 檢查請求方法是否為 POST
+  if (request.method !== 'POST') {
+    return response.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  const body = request.body;
 
   try {
     const jsonResponse = await handleUpload({
@@ -21,15 +24,8 @@ export async function POST(request) {
       },
     });
 
-    // 【核心修正】從 response.status().json() 改為回傳一個標準的 Response 物件
-    return new Response(JSON.stringify(jsonResponse), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return response.status(200).json(jsonResponse);
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 400, // Bad Request
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return response.status(400).json({ error: error.message });
   }
 }
