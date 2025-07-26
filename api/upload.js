@@ -1,47 +1,46 @@
-// api/upload.js
-import { handleUpload, VercelBlobError } from '@vercel/blob';
+// /api/upload.js
+// 【2025-07-26 最新正確版本】
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
+import { put, BlobError } from '@vercel/blob';
 
 export default async function handler(request, response) {
+  // 確保請求方法是 POST
+  console.log("Received request:", request.method, request.body);
+  
+  if (request.method !== 'POST') {
+    return response.status(405).json({ error: 'Method Not Allowed' });
+  }
+
   try {
-    // 【核心修正】將 request 和 response 交給 handleUpload，並等待它完成即可。
-    // handleUpload 會自行處理所有需要回傳給前端的回應。
-    await handleUpload({
-      request,
-      response,
-      onBeforeGenerateToken: async (pathname) => {
-        // pathname 是前端準備上傳的檔案名稱
-        return {
-          allowedContentTypes: ['application/pdf'],
-          tokenPayload: JSON.stringify({
-            // 如果需要在上傳完成後使用特定資料（如使用者ID），可以在此傳遞
-          }),
-        };
-      },
-      onUploadCompleted: async ({ blob, tokenPayload }) => {
-        // 這個函式會在檔案成功上傳到 Vercel Blob 後於「伺服器端」執行
-        console.log('檔案上傳成功!', blob.url);
-        // 您可以在此處執行額外的伺服器端操作，例如記錄到另一個資料庫
-      },
+    // 1. 取得前端 @vercel/blob/client 的 upload() 函式傳來的完整 body
+    //    Vercel 會自動為我們解析 JSON
+    const body = request.body;
+
+    // 2. 從 body.payload 中取得檔案名稱
+    //    這是修正的核心：pathname 被包在 payload 物件裡面！
+    const pathname = body?.payload?.pathname;
+
+    // 3. 再次驗證 pathname 是否存在
+    if (!pathname) {
+      return response.status(400).json({ error: 'Missing pathname in request payload' });
+    }
+
+    // 4. 呼叫 put 函式產生一個帶有簽名的上傳 URL
+    //    注意：這裡不再有 onBeforeGenerateToken，安全性檢查需要直接在這裡完成
+    const blob = await put(pathname, {
+      access: 'public', // 檔案設為公開
+      addRandomSuffix: false, // 不自動添加隨機後綴
     });
 
-    // 【核心修正】刪除所有在 handleUpload 之後的 response.status(...).json(...) 程式碼
-    // 因為 handleUpload 已經處理完畢，所以函式到此直接結束。
+    // 5. 將 Vercel Blob 回傳的完整資訊（包含簽名 URL）回傳給前端
+    //    前端的 upload() 函式需要這個完整的物件來完成後續操作
+    return response.status(200).json(blob);
 
   } catch (error) {
-    // 【重要】在 Vercel 日誌中印出完整的錯誤物件，方便我們除錯
-    console.error("Upload API Error:", error); 
-
-    if (error instanceof VercelBlobError) {
-      // 這是 Vercel Blob 套件已知的錯誤
+    if (error instanceof BlobError) {
       return response.status(400).json({ error: error.message });
     }
-    // 捕捉所有其他未預期的錯誤
-    return response.status(500).json({ error: '發生未預期的伺服器錯誤。' });
+    console.error("An unexpected error occurred:", error);
+    return response.status(500).json({ error: 'Internal Server Error' });
   }
 }
